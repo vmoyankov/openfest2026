@@ -353,6 +353,21 @@ Domain 'vm2' created from /root/cloud/vms/vm2/domain.xml
 
 -----------------------------------------------------------
 
+# Live Migration
+
+```
+# bin/cloud list
+kvm1	vm1
+kvm2	vm2
+
+# bin/cloud migrate vm1 kvm2
+
+# bin/cloud list
+kvm2	vm2
+kvm2	vm1
+```
+
+-----------------------------------------------------------
 
 
 

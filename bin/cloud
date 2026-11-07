@@ -248,6 +248,24 @@ stop_vm()
 	virsh_on "$host" "$action" "$vm_name"
 }
 
+# Live migrate a running VM to another host. The disks are on shared
+# storage, so only the memory and device state are copied.
+migrate_vm()
+{
+	local vm_name="$1"
+	local dest="$2"
+	local host
+
+	host=$(find_vm "$vm_name")
+	if [[ -z "$host" ]]; then
+		error "VM $vm_name not found running on any host"
+		return 1
+	fi
+
+	debug "VM $vm_name found on host $host. Migrating to $dest."
+	virsh_on "$host" migrate --live "$vm_name" "qemu+ssh://$dest/system"
+}
+
 # Connect to the VM's serial console. Press Ctrl+] to exit.
 console_vm()
 {
@@ -292,6 +310,7 @@ usage()
 	                              host with the most free memory
 	  stop     <vm_name>          Power off the VM on whichever host it is running on
 	  shutdown <vm_name>          Ask the guest OS to shut down the VM
+	  migrate  <vm_name> <host>   Live migrate the VM to the given host
 	  console  <vm_name>          Connect to the VM's serial console (Ctrl+] exits)
 	  list                        List running VMs on all hosts
 	  help                        Show this message
@@ -342,6 +361,17 @@ main()
 			load_hosts
 			read_vm_config "$1"
 			stop_vm "$VM_NAME" shutdown
+			;;
+		migrate)
+			require_vm_name "$1"
+			if [[ -z "$2" ]]; then
+				error "Missing host"
+				usage
+				exit 1
+			fi
+			load_hosts
+			read_vm_config "$1"
+			migrate_vm "$VM_NAME" "$2"
 			;;
 		console)
 			require_vm_name "$1"
