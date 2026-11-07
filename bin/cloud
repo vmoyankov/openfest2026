@@ -38,9 +38,18 @@ read_vm_config()
 
 	source "$VM_CFG_DIR/CONFIG"
 
+	VM_NAME="${VM_NAME:-$vm_name}"
 	VM_HOME="$POOL/vms/$VM_NAME"
 }
 
+
+# Run virsh against the libvirt daemon on a remote host
+virsh_on()
+{
+	local host="$1"
+	shift
+	virsh -c "qemu+ssh://$host/system" "$@"
+}
 
 
 ##############################################
@@ -62,22 +71,95 @@ clone_image()
 	qemu-img create -f qcow2 -b "$image" -F qcow2 "$dest" "${size}G" >&2
 }
 
+create_empty_disk()
+{
+	local dest="$1"
+	local size="$2"
+
+	debug "Creating empty disk image $dest of size $size GB"
+	qemu-img create -f qcow2 "$dest" "${size}G" >&2
+}
+
+create_disks()
+{
+	local i disk size img
+
+	for i in "${!VM_DISK_SIZE[@]}"; do
+		disk="$VM_HOME/disk_${i}.img"
+		size="${VM_DISK_SIZE[$i]}"
+		img="${VM_DISK_IMAGE[$i]}"
+
+		# don't destroy existing disks
+		if [[ -f "$disk" ]]; then
+			debug "Disk image $disk already exists. Skipping it."
+			continue
+		fi
+
+		if [[ -n "$img" ]]; then
+			clone_image "$IMG_DIR/$img" "$disk" "$size"
+		else
+			create_empty_disk "$disk" "$size"
+		fi
+	done
+}
+
 
 ##############################################
 # Domain XML
 ##############################################
 
+# Print one <disk> element per disk
+include_disks()
+{
+	local template="$FLAVORS_DIR/$VM_FLAVOR/disk.tmpl"
+	local disk_names=(vd{a..z})
+	local i
+
+	# flavors with fixed disks in domain.xml have no disk template
+	[[ -f "$template" ]] || return
+
+	export VM_DISK_PATH VM_DISK_DEV
+	for i in "${!VM_DISK_SIZE[@]}"; do
+		VM_DISK_PATH="$VM_HOME/disk_${i}.img"
+		VM_DISK_DEV="${disk_names[$i]}"
+		envsubst < "$template"
+	done
+}
+
+# Print one <interface> element per network
+include_interfaces()
+{
+	local template="$FLAVORS_DIR/$VM_FLAVOR/interface.tmpl"
+
+	# flavors with fixed interfaces in domain.xml have no interface template
+	[[ -f "$template" ]] || return
+
+	export VM_NET
+	for VM_NET in "${VM_NETS[@]}"; do
+		envsubst < "$template"
+	done
+}
+
 create_vm()
 {
 	local template="$FLAVORS_DIR/$VM_FLAVOR/domain.xml"
 
-	mkdir -p "$VM_HOME"
+	# Generate a UUID once and save it, so the VM keeps it on every start
+	if [[ -z "$VM_UUID" ]]; then
+		VM_UUID=$(uuidgen)
+		echo "VM_UUID=$VM_UUID" >> "$VM_CFG_DIR/CONFIG"
+	fi
 
+	mkdir -p "$VM_HOME"
+	create_disks
+
+	# flavors with a single fixed disk use VM_DISK_PATH in domain.xml
 	VM_DISK_PATH="$VM_HOME/disk_0.img"
 
-	clone_image "$IMG_DIR/$VM_DISK_IMAGE" "$VM_DISK_PATH" "$VM_DISK_SIZE"
+	INCLUDE_DISKS=$(include_disks)
+	INCLUDE_INTERFACES=$(include_interfaces)
 
-	export "${!VM_@}"
+	export "${!VM_@}" "${!INCLUDE_@}"
 	debug "Creating domain XML $VM_CFG_DIR/domain.xml"
 	envsubst < "$template" > "$VM_CFG_DIR/domain.xml"
 }
@@ -99,7 +181,7 @@ start_vm()
 	fi
 
 	debug "Starting VM $vm_name on $host."
-	virsh -c "qemu+ssh://$host/system" create "$domain"
+	virsh_on "$host" create "$domain"
 }
 
 # action: "destroy" powers off the VM, "shutdown" asks the guest OS to stop
@@ -109,7 +191,7 @@ stop_vm()
 	local host="$2"
 
 	debug "Stoppint VM $vm_name on host $host"
-	virsh -c "qemu+ssh://$host/system" destroy "$vm_name"
+	virsh_on "$host" "destroy" "$vm_name"
 }
 
 ##############################################
@@ -131,6 +213,15 @@ usage()
 	EOF
 }
 
+require_vm_name()
+{
+	if [[ -z "$1" ]]; then
+		error "Missing VM name"
+		usage
+		exit 1
+	fi
+}
+
 main()
 {
 	local cmd="$1"
@@ -143,14 +234,17 @@ main()
 
 	case "$cmd" in
 		create)
+			require_vm_name "$1"
 			read_vm_config "$1"
 			create_vm
 			;;
 		start)
+			require_vm_name "$1"
 			read_vm_config "$1"
 			start_vm "$VM_NAME" "$2"
 			;;
 		stop)
+			require_vm_name "$1"
 			read_vm_config "$1"
 			stop_vm "$VM_NAME" "$2"
 			;;

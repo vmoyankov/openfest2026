@@ -304,3 +304,38 @@ root@kvm1:~# bridge link
 ```
 
 
+-----------------------------------------------------------
+
+# Multiple Disks and Networks
+
+Вижте новите темплейти ``flavors/multi/dimain.xml`` и елементите ``disk.tmpl``
+и ``interface.tmpl``. 
+
+Kонфигурацията на VM вече позволява дефиниране ня няколко диска и мрежови
+интерфейси, които се описват като масиви. Виж ``vms/vm2/CONFIG``. Виж функциите
+``include_disks()`` и ``include_interfaces()``.
+
+Друга нова функция е създаването на дискове. Ако се подаде имидж, той се
+клонира. Ако не се подаде, се създава празен диск. Виж функцията
+``create_disks()``
+
+Друга нова функция е генериране на постоянно UUID ако няма такова.
+
+## Създай VM
+
+```
+# bin/cloud create vm2
+```
+Провери резултата:
+
+```
+# cat vms/vm2/domain.xml
+```
+
+## Стартирай VM
+
+```
+# bin/cloud start vm2 kvm1
+Domain 'vm2' created from /root/cloud/vms/vm2/domain.xml
+```
+
