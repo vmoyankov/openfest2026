@@ -369,5 +369,51 @@ kvm2	vm1
 
 -----------------------------------------------------------
 
+# Cloud-init
+
+Можете да контекстуализирате виртуалните машини със специфични настройки на guest OS, като:
+
+- hostname
+- създаване на user
+- password
+- ssh public key authentication
+- IP адрес, DNS
+
+Виж flavor ``full`` , ``cloud/ci/`` и ``vm3``. Поставете ваш ssh key в ``SEED_VALUES``
+
+Изтеглете AlmaLinux 10 имидж:
+
+```
+# wget -O /storage/nfs/images/alma10.qcow2 https://repo.almalinux.org/almalinux/10/cloud/
+x86_64/images/AlmaLinux-10-GenericCloud-latest.x86_64.qcow2
+```
+
+Тествайте ``vm3``:
+
+```
+# bin/cloud create vm3
+Formatting '/storage/nfs/vms/vm3/disk_0.img', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=16106127360 backing_file=/storage/nfs/images/alma10.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+
+# ls -l /storage/nfs/vms/vm3/
+total 220
+-rw-r--r-- 1 64055 kvm  196848 Nov  7 20:58 disk_0.img
+-rw-r--r-- 1 64055 kvm 2097152 Nov  7 20:59 seed.img
+
+root@controller:~/cloud# bin/cloud start vm3
+Domain 'vm3' created from /root/cloud/vms/vm3/domain.xml
+
+root@controller:~/cloud# bin/cloud list vm3
+kvm1	vm3
+kvm2	vm2
+kvm2	vm1
+root@controller:~/cloud# bin/cloud console vm3
+Connected to domain 'vm3'
+Escape character is ^] (Ctrl + ])
+
+vm3 login: 
+vm3 login: root
+Password: 
+[root@vm3 ~]# 
+```
 
 

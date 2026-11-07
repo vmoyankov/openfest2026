@@ -1,0 +1,10 @@
+network:
+  version: 2
+  ethernets:
+    eth0:
+      addresses: [$SEED_IP]
+      routes:
+        - to: default
+          via: $SEED_GATEWAY
+      nameservers:
+        addresses: [$SEED_DNS]

@@ -104,6 +104,35 @@ create_disks()
 }
 
 
+# Build a cloud-init NoCloud seed image: a small vfat disk labelled
+# CIDATA with the files from ci/*.tmpl, filled in from SEED_VALUES.
+create_seed()
+{
+	local seed="$VM_HOME/seed.img"
+	local workdir f
+
+	if [[ ! -f "$VM_CFG_DIR/SEED_VALUES" ]]; then
+		debug "No SEED_VALUES for $VM_NAME. Skipping cloud-init seed."
+		return
+	fi
+
+	source "$VM_CFG_DIR/SEED_VALUES"
+	export "${!VM_@}" "${!SEED_@}"
+
+	debug "Creating cloud-init seed image $seed"
+	rm -f "$seed"
+	truncate -s 2M "$seed"
+	mkfs.vfat -n CIDATA "$seed" >/dev/null
+
+	workdir=$(mktemp -d)
+	for f in meta-data user-data network-config; do
+		envsubst < "$CI_DIR/$f.tmpl" > "$workdir/$f"
+		mcopy -i "$seed" "$workdir/$f" ::
+	done
+	rm -rf "$workdir"
+}
+
+
 ##############################################
 # Domain XML
 ##############################################
@@ -140,6 +169,17 @@ include_interfaces()
 	done
 }
 
+# Print the cloud-init seed disk, if the VM has a seed image
+include_seed()
+{
+	local template="$FLAVORS_DIR/$VM_FLAVOR/seed.tmpl"
+
+	[[ -f "$template" && -f "$VM_HOME/seed.img" ]] || return
+
+	export VM_HOME
+	envsubst < "$template"
+}
+
 create_vm()
 {
 	local template="$FLAVORS_DIR/$VM_FLAVOR/domain.xml"
@@ -152,12 +192,14 @@ create_vm()
 
 	mkdir -p "$VM_HOME"
 	create_disks
+	create_seed
 
 	# flavors with a single fixed disk use VM_DISK_PATH in domain.xml
 	VM_DISK_PATH="$VM_HOME/disk_0.img"
 
 	INCLUDE_DISKS=$(include_disks)
 	INCLUDE_INTERFACES=$(include_interfaces)
+	INCLUDE_DEVICES=$(include_seed)
 
 	export "${!VM_@}" "${!INCLUDE_@}"
 	debug "Creating domain XML $VM_CFG_DIR/domain.xml"

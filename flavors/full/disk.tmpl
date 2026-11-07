@@ -1,0 +1,5 @@
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='${VM_DISK_PATH}'/>
+      <target dev='${VM_DISK_DEV}' bus='virtio'/>
+    </disk>

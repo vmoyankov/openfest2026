@@ -1,0 +1,12 @@
+#cloud-config
+disable_root: false                                                                                                   
+ssh_pwauth: true
+users:
+  - name: $SEED_USER
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/sh
+    lock_passwd: false
+    hashed_passwd: $SEED_PASSWORD_ENC
+    ssh_authorized_keys:
+      - $SEED_SSH_KEY
+

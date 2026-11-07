@@ -1,0 +1,6 @@
+SEED_IP=10.5.45.21/24
+SEED_GATEWAY=10.5.45.254
+SEED_DNS=1.1.1.1
+SEED_USER=root
+SEED_PASSWORD_ENC=$(echo password | openssl passwd -6 -stdin)
+SEED_SSH_KEY='ssh-ed25519 AAAAC... '
