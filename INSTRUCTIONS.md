@@ -160,3 +160,83 @@ mount -a
 ```
 df -h
 ```
+
+-----------------------------------------------------------
+
+# Първа минимална версия
+
+## Инсталиране на необходимите пакети
+
+### Controller
+
+```
+apt install -y libvirt-clients mtools tree
+```
+
+### KVM Хостове
+
+```
+apt install libvirt-daemon libvirt-clients
+```
+
+## Конфигурационни файлове
+
+Разгледайте конфигурационните файлове:
+
+- ``cloud/config/kvm-hosts`` - списък с KVM хостовете
+- ``cloud/flavors/simple/domain.xml`` - Дефиниция на тип (flavor) виртуална машина
+
+## cloud скрипт
+
+Разгледайте първата версия на ``bin/cloud`` скрипта.
+
+## Изтеглете AlpineLinux дисков image
+
+Този имидж ще го използваме за базов за първите виртуални машини които създаваме. Изтеглете Alpine за x86_64, вид cloudinit. Базовите имиджи се съхраняват на споделения сторидж, така че може да изпълните операцията от контролера или който и да е KVM хост:
+
+```
+wget -O /storage/nfs/images/alpine.qcow2 'https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/cloud/alpine-3.24.4-x86_64-cloudinit-r0.qcow2'
+```
+
+## Създаване на виртуална машина
+
+Редактирайте параметрите на виртуаланта машина - ``cloud/vms/vm1/CONFIG``
+
+Създайте виртулата машина
+
+```
+# bin/cloud create vm1
+Formatting '/storage/nfs/vms/vm1/disk_0.img', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=2147483648 backing_file=/storage/nfs/images/alpine.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+```
+
+Това създава дисков имидж базиран на дефинирания в конфигурацията имидж
+(alpine.qcow2), както и дефиниция на виртуалната машина базирана на избрания
+flavor (`simple`).
+
+```
+# ls -lh /storage/nfs/vms/vm1/
+# qemu-img info /storage/nfs/vms/vm1/disk_0.img 
+# cat /root/cloud/vms/vm1/domain.xml
+```
+
+## Стартиране на виртуалната машина
+
+```
+# bin/cloud start vm1 kvm1
+Domain 'vm1' created from /root/cloud/vms/vm1/domain.xml
+```
+
+Можете да видите конзолата като изпълните
+
+```
+# virsh -c qemu+ssh://kvm1/system console vm1
+Connected to domain 'vm1'
+Escape character is ^] (Ctrl + ])
+```
+
+## Спиране на виртуалната машина
+
+```
+# bin/cloud stop vm1 kvm1
+Domain 'vm1' destroyed
+```

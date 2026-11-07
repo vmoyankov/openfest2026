@@ -1,0 +1,6 @@
+VM_NAME=vm1
+VM_FLAVOR=simple
+VM_RAM=1024
+VM_CPU=2
+VM_DISK_IMAGE=alpine.qcow2
+VM_DISK_SIZE=2

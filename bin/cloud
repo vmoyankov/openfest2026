@@ -1,0 +1,168 @@
+#!/bin/bash
+#
+# cloud - a minimal "cloud" built with bash, qemu-img and virsh.
+#
+# Demo code: kept as simple as possible, with almost no error handling.
+
+ROOT=/root/cloud
+POOL=/storage/nfs
+
+CONFIG_DIR=$ROOT/config
+FLAVORS_DIR=$ROOT/flavors
+CI_DIR=$ROOT/ci
+IMG_DIR=$POOL/images
+
+debug() { [[ -n "$DEBUG" ]] && echo "DEBUG: $*" >&2; }
+error() { echo "ERROR: $*" >&2; }
+
+
+##############################################
+# Configuration
+##############################################
+
+# Load vms/<name>/CONFIG and set VM_CFG_DIR, VM_NAME and VM_HOME
+read_vm_config()
+{
+	local vm_name="$1"
+
+	VM_CFG_DIR="$ROOT/vms/$vm_name"
+
+	if [[ ! -d "$VM_CFG_DIR" ]]; then
+		error "No configuration directory for $vm_name"
+		exit 1
+	fi
+	if [[ ! -f "$VM_CFG_DIR/CONFIG" ]]; then
+		error "No configuration file $VM_CFG_DIR/CONFIG"
+		exit 1
+	fi
+
+	source "$VM_CFG_DIR/CONFIG"
+
+	VM_HOME="$POOL/vms/$VM_NAME"
+}
+
+
+
+##############################################
+# Disks
+##############################################
+
+clone_image()
+{
+	local image="$1"
+	local dest="$2"
+	local size="$3"
+
+	if [[ ! -f "$image" ]]; then
+		error "Source image $image not found"
+		exit 1
+	fi
+
+	debug "Cloning $image to $dest with size $size GB"
+	qemu-img create -f qcow2 -b "$image" -F qcow2 "$dest" "${size}G" >&2
+}
+
+
+##############################################
+# Domain XML
+##############################################
+
+create_vm()
+{
+	local template="$FLAVORS_DIR/$VM_FLAVOR/domain.xml"
+
+	mkdir -p "$VM_HOME"
+
+	VM_DISK_PATH="$VM_HOME/disk_0.img"
+
+	clone_image "$IMG_DIR/$VM_DISK_IMAGE" "$VM_DISK_PATH" "$VM_DISK_SIZE"
+
+	export "${!VM_@}"
+	debug "Creating domain XML $VM_CFG_DIR/domain.xml"
+	envsubst < "$template" > "$VM_CFG_DIR/domain.xml"
+}
+
+##############################################
+# VM operations
+##############################################
+
+# Start the VM on the given host, or on the host with the most free memory
+start_vm()
+{
+	local vm_name="$1"
+	local host="$2"
+	local domain="$VM_CFG_DIR/domain.xml"
+
+	if [[ ! -f "$domain" ]]; then
+		error "Domain XML $domain not found. Run '$(basename "$0") create' first."
+		return 1
+	fi
+
+	debug "Starting VM $vm_name on $host."
+	virsh -c "qemu+ssh://$host/system" create "$domain"
+}
+
+# action: "destroy" powers off the VM, "shutdown" asks the guest OS to stop
+stop_vm()
+{
+	local vm_name="$1"
+	local host="$2"
+
+	debug "Stoppint VM $vm_name on host $host"
+	virsh -c "qemu+ssh://$host/system" destroy "$vm_name"
+}
+
+##############################################
+# Main
+##############################################
+
+usage()
+{
+	cat >&2 <<-EOF
+	Usage: $(basename "$0") <command> [args]
+
+	Commands:
+	  create   <vm_name>          Create disks and domain XML from the VM's CONFIG
+	  start    <vm_name> <host>   Start the VM on the given host
+	  stop     <vm_name> <host>   Power off the VM running on host
+	  help                        Show this message
+
+	Set DEBUG=1 for verbose output.
+	EOF
+}
+
+main()
+{
+	local cmd="$1"
+
+	if [[ -z "$cmd" ]]; then
+		usage
+		exit 1
+	fi
+	shift
+
+	case "$cmd" in
+		create)
+			read_vm_config "$1"
+			create_vm
+			;;
+		start)
+			read_vm_config "$1"
+			start_vm "$VM_NAME" "$2"
+			;;
+		stop)
+			read_vm_config "$1"
+			stop_vm "$VM_NAME" "$2"
+			;;
+		help|-h|--help)
+			usage
+			;;
+		*)
+			error "Unknown command: $cmd"
+			usage
+			exit 1
+			;;
+	esac
+}
+
+main "$@"
