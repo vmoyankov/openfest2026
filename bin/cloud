@@ -164,6 +164,43 @@ create_vm()
 	envsubst < "$template" > "$VM_CFG_DIR/domain.xml"
 }
 
+
+##############################################
+# Hosts
+##############################################
+
+load_hosts()
+{
+	mapfile -t KVM_HOSTS < "$CONFIG_DIR/kvm-hosts"
+}
+
+# Print the host where the VM is running
+find_vm()
+{
+	local vm_name="$1"
+	local host
+
+	for host in "${KVM_HOSTS[@]}"; do
+		if virsh_on "$host" list --name --state-running | grep -qFx "$vm_name"; then
+			echo "$host"
+			return
+		fi
+	done
+}
+
+# Print the host with the most free memory
+select_host()
+{
+	local host kb
+
+	for host in "${KVM_HOSTS[@]}"; do
+		# "virsh freecell" prints: Total: 15372700 KiB
+		kb=$(virsh_on "$host" freecell | awk '{print $2}')
+		echo "$kb $host"
+	done | sort -rn | head -1 | cut -d ' ' -f 2
+}
+
+
 ##############################################
 # VM operations
 ##############################################
@@ -174,13 +211,23 @@ start_vm()
 	local vm_name="$1"
 	local host="$2"
 	local domain="$VM_CFG_DIR/domain.xml"
+	local running_on
 
 	if [[ ! -f "$domain" ]]; then
 		error "Domain XML $domain not found. Run '$(basename "$0") create' first."
 		return 1
 	fi
 
-	debug "Starting VM $vm_name on $host."
+	running_on=$(find_vm "$vm_name")
+	if [[ -n "$running_on" ]]; then
+		error "VM $vm_name is already running on host $running_on"
+		return 1
+	fi
+
+	if [[ -z "$host" ]]; then
+		host=$(select_host)
+	fi
+	debug "Selected host $host. Starting VM $vm_name."
 	virsh_on "$host" create "$domain"
 }
 
@@ -188,11 +235,47 @@ start_vm()
 stop_vm()
 {
 	local vm_name="$1"
-	local host="$2"
+	local action="${2:-destroy}"
+	local host
 
-	debug "Stoppint VM $vm_name on host $host"
-	virsh_on "$host" "destroy" "$vm_name"
+	host=$(find_vm "$vm_name")
+	if [[ -z "$host" ]]; then
+		error "VM $vm_name not found running on any host"
+		return 1
+	fi
+
+	debug "VM $vm_name found on host $host. Running $action."
+	virsh_on "$host" "$action" "$vm_name"
 }
+
+# Connect to the VM's serial console. Press Ctrl+] to exit.
+console_vm()
+{
+	local vm_name="$1"
+	local host
+
+	host=$(find_vm "$vm_name")
+	if [[ -z "$host" ]]; then
+		error "VM $vm_name not found running on any host"
+		return 1
+	fi
+
+	debug "VM $vm_name found on host $host. Connecting to its console."
+	virsh_on "$host" console "$vm_name"
+}
+
+list_vms()
+{
+	local host vm
+
+	for host in "${KVM_HOSTS[@]}"; do
+		while read -r vm; do
+			[[ -z "$vm" ]] && continue
+			printf '%s\t%s\n' "$host" "$vm"
+		done <<< "$(virsh_on "$host" list --name --state-running)"
+	done
+}
+
 
 ##############################################
 # Main
@@ -205,8 +288,12 @@ usage()
 
 	Commands:
 	  create   <vm_name>          Create disks and domain XML from the VM's CONFIG
-	  start    <vm_name> <host>   Start the VM on the given host
-	  stop     <vm_name> <host>   Power off the VM running on host
+	  start    <vm_name> [host]   Start the VM on the given host, or on the
+	                              host with the most free memory
+	  stop     <vm_name>          Power off the VM on whichever host it is running on
+	  shutdown <vm_name>          Ask the guest OS to shut down the VM
+	  console  <vm_name>          Connect to the VM's serial console (Ctrl+] exits)
+	  list                        List running VMs on all hosts
 	  help                        Show this message
 
 	Set DEBUG=1 for verbose output.
@@ -240,13 +327,31 @@ main()
 			;;
 		start)
 			require_vm_name "$1"
+			load_hosts
 			read_vm_config "$1"
 			start_vm "$VM_NAME" "$2"
 			;;
 		stop)
 			require_vm_name "$1"
+			load_hosts
 			read_vm_config "$1"
-			stop_vm "$VM_NAME" "$2"
+			stop_vm "$VM_NAME"
+			;;
+		shutdown)
+			require_vm_name "$1"
+			load_hosts
+			read_vm_config "$1"
+			stop_vm "$VM_NAME" shutdown
+			;;
+		console)
+			require_vm_name "$1"
+			load_hosts
+			read_vm_config "$1"
+			console_vm "$VM_NAME"
+			;;
+		list)
+			load_hosts
+			list_vms
 			;;
 		help|-h|--help)
 			usage
