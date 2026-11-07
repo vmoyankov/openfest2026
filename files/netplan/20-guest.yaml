@@ -1,0 +1,6 @@
+network:
+  version: 2
+  bridges:
+    guest:
+      interfaces:
+        - eth1

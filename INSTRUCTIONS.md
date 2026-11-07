@@ -240,3 +240,67 @@ Escape character is ^] (Ctrl + ])
 # bin/cloud stop vm1 kvm1
 Domain 'vm1' destroyed
 ```
+
+
+-----------------------------------------------------------
+
+# Network
+
+Ще добавим виртуални мрежи на хостовете и във виртуалните машини.
+
+## KVM хостове
+
+
+За виртуалните мрежи ще използваме Linux bridge. Всеки KVM хост трябва да има
+дефиниран по един `bridge` инрефейс за всяка виртуална мрежа, към която
+вируалните машини може да се свързват. 
+
+Ще създадем 2 виртуални мрежи - ``guest`` и ``priv``. Те ще бъдат свързани
+съответно към ``eth1`` и ``eth2`` и на двата KVM хоста.
+
+Копирайте файловете от ``files/netplan/*.yaml`` на всички KVM хостове в
+``/etc/netplan/`` и приложете конфигурацията с:
+
+```
+# netplan try
+```
+
+Проверете резултата с:
+
+```
+# bridge link
+3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 master guest state forwarding priority 32 cost 100 
+4: eth2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 master priv state forwarding priority 32 cost 100 
+```
+
+## VM дефиниция
+
+Разгледайте дефиницията на новия flavor - ``flavors/simple-net/domain.xml`` и
+промените в параметрите на ``vm1``:
+
+## Промяна на хонфигурацията на VM
+
+- Спрете VM ако все още работи.
+- изтрийте диска: ``rm /storage/nfs/vms/vm1/disk_0.img``
+- регенрирайте конфигурацията и диска с ``bin/cloud create vm1``
+
+```
+# cat vms/vm1/domain.xml
+```
+
+Стартирайте VM:
+
+```
+bin/cloud start vm1 kvm1
+```
+
+Проверка на мрежата на kvm1:
+
+```
+root@kvm1:~# bridge link
+3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 master guest state forwarding priority 32 cost 100 
+4: eth2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 master priv state forwarding priority 32 cost 100 
+8: vnet0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 master guest state forwarding priority 32 cost 2 
+```
+
+
