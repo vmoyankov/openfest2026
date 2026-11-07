@@ -22,4 +22,3 @@ git show
 
 Follow the instructions coming with the commit.
 
-Lets start. Pull the next commit
